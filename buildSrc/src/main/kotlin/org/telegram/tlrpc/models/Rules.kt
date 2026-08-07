@@ -1,6 +1,6 @@
 package org.telegram.tlrpc.models
 
-object RULES {
+object SchemeRules {
     val rules = Rules(
         databaseTypes = setOf(
             "Message", "StoryItem", "Theme",

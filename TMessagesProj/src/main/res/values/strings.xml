@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="AppName">Telegram</string>
+    <string name="CleargramMainChatsTitle">Cleargram</string>
     <string name="AppNameBeta">Telegram Beta</string>
     <string name="LanguageName">English</string>
     <string name="English">English</string>
@@ -4168,6 +4169,12 @@
     <string name="ViewMessage">Open Message</string>
     <!--Intro view-->
     <string name="Page1Title">Telegram</string>
+    <string name="CleargramIntroTitle">Cleargram</string>
+    <string name="CleargramIntroSlogan">Messages without the clutter</string>
+    <string name="CleargramIntroDescriptionFirstLine">Choose which messages to show.</string>
+    <string name="CleargramIntroDescriptionSecondLine">Filtering works locally on your device.</string>
+    <string name="CleargramIntroNotice">Cleargram is an unofficial client that uses the Telegram API.</string>
+    <string name="CleargramIntroContinue">Continue</string>
     <string name="Page2Title">Fast</string>
     <string name="Page3Title">Free</string>
     <string name="Page4Title">Secure</string>
@@ -10904,4 +10911,35 @@
     <string name="WearAuthText">Connect your account to WatchOS device\nto use it separately from your watch.</string>
     <string name="WearAuthEmojis">Compare emojis on your watch</string>
     <string name="WearAuthEmojisLogIn">Log In</string>
+    <string name="CleargramMessageCollapsed">Message collapsed</string>
+    <string name="CleargramNoiseFilter">Message Filter</string>
+    <string name="CleargramEnableAll">Enable all</string>
+    <string name="CleargramMessageFiltering">Message filtering</string>
+    <string name="CleargramFilteringRules">Filtering rules</string>
+    <string name="CleargramCtaMessages">CTA messages</string>
+    <string name="CleargramRules">Rules</string>
+    <string name="CleargramAddRule">Add rule</string>
+    <string name="CleargramWhiteListRule">White List rule</string>
+    <string name="CleargramWhiteList">White List</string>
+    <string name="CleargramBlackList">Black List</string>
+    <string name="CleargramRuleType">Rule type</string>
+    <string name="CleargramBlackListAction">Black List action</string>
+    <string name="CleargramHideReactions">Hide reactions</string>
+    <string name="CleargramHideDuplicateVideos">Hide duplicate videos</string>
+    <string name="CleargramHideChannelEndAdvertisement">Hide channel-end advertisement</string>
+    <string name="CleargramHideChannelEndAdvertisementSummary">Completely hides the advertisement shown after channel posts.</string>
+    <string name="CleargramHideFullscreenVideoAdvertisement">Hide ads under fullscreen videos</string>
+    <string name="CleargramHideFullscreenVideoAdvertisementSummary">Hides the advertising block displayed below videos in the fullscreen viewer.</string>
+    <string name="CleargramHideChannelPinnedMessageHeader">Hide Channel Pinned Message Header</string>
+    <string name="CleargramActionHide">Hide</string>
+    <string name="CleargramActionCollapse">Collapse</string>
+    <string name="CleargramMessageCtaButton">Messages with action button</string>
+    <string name="CleargramMessageCtaButtonAction">Action</string>
+    <string name="CleargramMessageCtaButtonActionHide">Hide</string>
+    <string name="CleargramMessageCtaButtonActionCollapse">Collapse</string>
+    <string name="CleargramNoRules">No rules</string>
+    <string name="CleargramDeleteRule">Delete rule</string>
+    <string name="CleargramOperationFailed">Unable to complete the operation. Please try again.</string>
+    <string name="CleargramEnterRule">Enter a word or phrase</string>
+    <string name="CleargramRuleInvalid">Rule is invalid or already exists</string>
 </resources>

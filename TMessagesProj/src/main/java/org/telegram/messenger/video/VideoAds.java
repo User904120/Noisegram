@@ -32,6 +32,7 @@ import android.widget.TextView;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
+import org.cleargram.integration.TelegramNoiseBootstrap;
 import org.aspectj.lang.annotation.AdviceName;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ApplicationLoader;
@@ -240,6 +241,13 @@ public class VideoAds {
     private float currentMenuTranslationY;
 
     private void show() {
+        if (shouldSuppressFullscreenVideoAdvertisement()) {
+            if (bulletin != null) {
+                bulletin.hide();
+                bulletin = null;
+            }
+            return;
+        }
         if (ads.isEmpty()) return;
         final TLRPC.TL_sponsoredMessage ad = ads.get(0);
         final long showTime = System.currentTimeMillis() - currentBulletinPassedTime;
@@ -543,6 +551,14 @@ public class VideoAds {
         });
         bulletin.show();
         logSponsoredShown(ad);
+    }
+
+    private boolean shouldSuppressFullscreenVideoAdvertisement() {
+        try {
+            return TelegramNoiseBootstrap.shouldHideFullscreenVideoAdvertisement();
+        } catch (RuntimeException ignored) {
+            return false;
+        }
     }
 
     public void stop() {

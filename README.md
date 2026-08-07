@@ -1,39 +1,66 @@
-## Telegram messenger for Android
+# Cleargram
 
-[Telegram](https://telegram.org) is a messaging app with a focus on speed and security. It’s superfast, simple and free.
-This repo contains the official source code for [Telegram App for Android](https://play.google.com/store/apps/details?id=org.telegram.messenger).
+Cleargram is an unofficial Android client based on the Telegram Android source
+tree. It keeps Telegram protocol compatibility while adding local, on-device
+message-filtering tools. Cleargram does not operate a separate server and is
+not affiliated with Telegram.
 
-## Creating your Telegram Application
+## Source base and license
 
-We welcome all developers to use our API and source code to create applications on our platform.
-There are several things we require from **all developers** for the moment.
+- Base source: Telegram Android 12.8.1.
+- Cleargram version: 1.0.0 (versionCode 6916).
+- This repository is distributed under the GNU General Public License Version 2;
+  see
+  [LICENSE](LICENSE).
+- Telegram is a trademark of Telegram FZ-LLC. Cleargram is an unofficial
+  client and must not be represented as the official Telegram application.
 
-1. [**Obtain your own api_id**](https://core.telegram.org/api/obtaining_api_id) for your application.
-2. Please **do not** use the name Telegram for your app — or make sure your users understand that it is unofficial.
-3. Kindly **do not** use our standard logo (white paper plane in a blue circle) as your app's logo.
-3. Please study our [**security guidelines**](https://core.telegram.org/mtproto/security_guidelines) and take good care of your users' data and privacy.
-4. Please remember to publish **your** code too in order to comply with the licences.
+The Telegram API and MTProto documentation are available at
+[core.telegram.org](https://core.telegram.org/). Developers using this source
+must follow Telegram's applicable API, branding, security, and distribution
+requirements.
 
-### API, Protocol documentation
+## Build prerequisites
 
-Telegram API manuals: https://core.telegram.org/api
+Use Android SDK platform/build-tools 35, Android NDK 27.2.12479018, JDK 21,
+CMake 3.10.2, and the checked-in Gradle 8.13 wrapper for the checked-out
+Telegram Android 12.8.1 source base. The public `afat` profile intentionally
+omits Google-services integration when built with `-PnoisegramTestNoGoogleServices`.
 
-MTproto protocol manuals: https://core.telegram.org/mtproto
+### Local Telegram API credentials
 
-### Compilation Guide
+Telegram API credentials are deliberately not stored in this repository. Obtain
+your own credentials through Telegram's documented API process and add these
+two values only to `%USERPROFILE%\.gradle\gradle.properties` (or
+`~/.gradle/gradle.properties` on Unix-like systems):
 
-**Note**: In order to support [reproducible builds](https://core.telegram.org/reproducible-builds), this repo contains dummy release.keystore,  google-services.json and filled variables inside BuildVars.java. Before publishing your own APKs please make sure to replace all these files with your own.
+```properties
+cleargramTelegramApiId=YOUR_API_ID
+cleargramTelegramApiHash=YOUR_API_HASH
+```
 
-You will require Android Studio 3.4, Android NDK rev. 20 and Android SDK 8.1
+Do not commit this local file, credentials, signing keys, passwords, or any
+local keystore path. Gradle configuration and sync work without these values;
+an `afatDebug` or `afatRelease` build stops with a clear validation error until
+valid values are supplied.
 
-1. Download the Telegram source code from https://github.com/DrKLO/Telegram ( git clone https://github.com/DrKLO/Telegram.git )
-2. Copy your release.keystore into TMessagesProj/config
-3. Fill out RELEASE_KEY_PASSWORD, RELEASE_KEY_ALIAS, RELEASE_STORE_PASSWORD in gradle.properties to access your  release.keystore
-4.  Go to https://console.firebase.google.com/, create two android apps with application IDs org.telegram.messenger and org.telegram.messenger.beta, turn on firebase messaging and download google-services.json, which should be copied to the same folder as TMessagesProj.
-5. Open the project in the Studio (note that it should be opened, NOT imported).
-6. Fill out values in TMessagesProj/src/main/java/org/telegram/messenger/BuildVars.java – there’s a link for each of the variables showing where and which data to obtain.
-7. You are ready to compile Telegram.
+## Reproducible public build commands
 
-### Localization
+From the repository root, use the public no-Google profile:
 
-We moved all translations to https://translations.telegram.org/en/android/. Please use it.
+```bash
+./gradlew :TMessagesProj_App:assembleAfatDebug -PnoisegramTestNoGoogleServices --console=plain
+./gradlew :TMessagesProj_App:assembleAfatRelease -PnoisegramTestNoGoogleServices --console=plain
+./gradlew :TMessagesProj_App:bundleAfatRelease -PnoisegramTestNoGoogleServices --console=plain
+```
+
+Release signing material is local and external to this repository. A build
+artifact can be compared to its source revision, command line, local toolchain,
+and the generated artifact hash; reproducibility also depends on matching the
+documented upstream toolchain and local credentials/signing configuration.
+
+## Development status
+
+Cleargram 1.0.0 is preparing for its first public source publication.
+Contributions and distribution processes are intentionally limited until that
+publication is complete.

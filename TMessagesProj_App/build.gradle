@@ -1,5 +1,21 @@
 apply plugin: 'com.android.application'
 
+def cleargramTestNoGoogleServices = project.hasProperty('cleargramTestNoGoogleServices')
+def cleargramTelegramApiIdIsValid = { value ->
+    if (value == null || !(value ==~ /[1-9][0-9]*/)) {
+        return false
+    }
+    try {
+        Integer.parseInt(value)
+        return true
+    } catch (NumberFormatException ignored) {
+        return false
+    }
+}
+def cleargramTelegramApiHashIsValid = { value ->
+    value != null && value ==~ /[0-9A-Fa-f]{32}/
+}
+
 repositories {
     mavenCentral()
     google()
@@ -42,18 +58,23 @@ android {
     }
 
     signingConfigs {
-        debug {
-            storeFile file("../TMessagesProj/config/release.keystore")
-            storePassword RELEASE_STORE_PASSWORD
-            keyAlias RELEASE_KEY_ALIAS
-            keyPassword RELEASE_KEY_PASSWORD
-        }
-
         release {
             storeFile file("../TMessagesProj/config/release.keystore")
             storePassword RELEASE_STORE_PASSWORD
             keyAlias RELEASE_KEY_ALIAS
             keyPassword RELEASE_KEY_PASSWORD
+        }
+        cleargramRelease {
+            def storeFileProperty = providers.gradleProperty('cleargramReleaseStoreFile')
+            def storePasswordProperty = providers.gradleProperty('cleargramReleaseStorePassword')
+            def keyAliasProperty = providers.gradleProperty('cleargramReleaseKeyAlias')
+            def keyPasswordProperty = providers.gradleProperty('cleargramReleaseKeyPassword')
+            if (storeFileProperty.isPresent() && storePasswordProperty.isPresent() && keyAliasProperty.isPresent() && keyPasswordProperty.isPresent()) {
+                storeFile file(storeFileProperty.get())
+                storePassword storePasswordProperty.get()
+                keyAlias keyAliasProperty.get()
+                keyPassword keyPasswordProperty.get()
+            }
         }
     }
 
@@ -198,4 +219,40 @@ android {
     }
 }
 
-apply plugin: 'com.google.gms.google-services'
+gradle.taskGraph.whenReady { graph ->
+    def isAfatBuild = graph.allTasks.any { it.name.toLowerCase().contains('afatdebug') || it.name.toLowerCase().contains('afatrelease') }
+    if (isAfatBuild) {
+        def apiId = providers.gradleProperty('cleargramTelegramApiId').orNull
+        def apiHash = providers.gradleProperty('cleargramTelegramApiHash').orNull
+        if (!cleargramTelegramApiIdIsValid(apiId) || !cleargramTelegramApiHashIsValid(apiHash)) {
+            throw new GradleException('afatDebug and afatRelease require valid cleargramTelegramApiId and cleargramTelegramApiHash Gradle properties.')
+        }
+    }
+    if (graph.allTasks.any { it.name.toLowerCase().contains('afatrelease') }) {
+        def requiredCleargramSigningProperties = [
+            'cleargramReleaseStoreFile',
+            'cleargramReleaseStorePassword',
+            'cleargramReleaseKeyAlias',
+            'cleargramReleaseKeyPassword'
+        ]
+        def missingCleargramSigningProperties = requiredCleargramSigningProperties.findAll { !providers.gradleProperty(it).isPresent() }
+        if (!missingCleargramSigningProperties.isEmpty()) {
+            throw new GradleException("afatRelease requires Cleargram release signing properties: ${missingCleargramSigningProperties.join(', ')}")
+        }
+    }
+}
+
+def cleargramReleaseSigningConfig = android.signingConfigs.cleargramRelease
+
+androidComponents {
+    onVariants(selector().withName("afatRelease")) { variant ->
+        variant.signingConfig.setConfig(cleargramReleaseSigningConfig)
+    }
+    onVariants(selector().withName("afatDebug")) { variant ->
+        variant.applicationId.set(APP_PACKAGE)
+    }
+}
+
+if (!cleargramTestNoGoogleServices) {
+    apply plugin: 'com.google.gms.google-services'
+}

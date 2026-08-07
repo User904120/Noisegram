@@ -132,6 +132,22 @@ import androidx.viewpager.widget.ViewPager;
 import com.google.android.exoplayer2.ui.AspectRatioFrameLayout;
 import com.google.zxing.common.detector.MathUtils;
 
+import org.cleargram.api.NoiseAction;
+import org.cleargram.api.NoiseDecision;
+import org.cleargram.api.NoiseMessage;
+import org.cleargram.integration.TelegramCollapseState;
+import org.cleargram.integration.TelegramChannelFooterLinkPresentationPolicy;
+import org.cleargram.integration.TelegramCaptionFooterOverridePreparer;
+import org.cleargram.integration.TelegramDecisionApplier;
+import org.cleargram.integration.TelegramDecisionContext;
+import org.cleargram.integration.TelegramFooterOnlyTextBindIntegration;
+import org.cleargram.integration.TelegramDuplicateVideoChatRuntime;
+import org.cleargram.integration.TelegramNoiseBootstrap;
+import org.cleargram.api.NoiseEvaluation;
+import org.cleargram.api.NoisePipelineOutcome;
+import org.cleargram.integration.TelegramMessageMapper;
+import org.cleargram.integration.TelegramMessageCtaPresentationPolicy;
+import org.cleargram.integration.TelegramNoiseGateway;
 import org.telegram.PhoneFormat.PhoneFormat;
 import org.telegram.messenger.AccountInstance;
 import org.telegram.messenger.AndroidUtilities;
@@ -359,6 +375,12 @@ public class ChatActivity extends BaseFragment implements
         InstantCameraView.Delegate,
         FactorAnimator.Target
 {
+    private final static TelegramDecisionApplier noiseDecisionApplier = new TelegramDecisionApplier();
+    private TelegramDuplicateVideoChatRuntime duplicateVideoRuntime;
+    private final static TelegramMessageMapper noiseMessageMapper = new TelegramMessageMapper();
+    private final static TelegramNoiseGateway noiseGateway = new TelegramNoiseGateway();
+    private final TelegramCollapseState noiseCollapseState = new TelegramCollapseState();
+
     private final static boolean PULL_DOWN_BACK_FRAGMENT = false;
     private final static boolean DISABLE_PROGRESS_VIEW = true;
     private final static int SKELETON_DISAPPEAR_MS = 200;
@@ -1106,6 +1128,186 @@ public class ChatActivity extends BaseFragment implements
         if (slidingView instanceof ChatMessageCell) return ((ChatMessageCell) slidingView).getSlidingOffsetX();
         return 0;
     }
+
+    private CleargramBindPlan prepareCleargramBindPlan(MessageObject messageObject) {
+        try {
+            MessageObject.GroupedMessages groupedMessages = getValidGroupedMessage(messageObject);
+            MessageObject decisionMessage = messageObject;
+            NoiseMessage evaluationMessage = noiseMessageMapper.map(messageObject);
+            TelegramDecisionContext.PresentationRole presentationRole = TelegramDecisionContext.PresentationRole.SINGLE;
+            Runnable presentationUnitRebind = createCleargramSingleMessageRebind(messageObject);
+            if (messageObject != null && messageObject.getGroupId() != 0) {
+                if (groupedMessages == null || groupedMessages.messages == null || groupedMessages.messages.isEmpty()) {
+                    return CleargramBindPlan.failOpen(messageObject, groupedMessages);
+                }
+                MessageObject primaryMessage = groupedMessages.findPrimaryMessageObject();
+                if (primaryMessage == null || !groupedMessages.messages.contains(messageObject) || !groupedMessages.messages.contains(primaryMessage)) {
+                    return CleargramBindPlan.failOpen(messageObject, groupedMessages);
+                }
+                decisionMessage = primaryMessage;
+                evaluationMessage = noiseMessageMapper.mapGrouped(primaryMessage, groupedMessages.messages);
+                presentationRole = messageObject == primaryMessage ? TelegramDecisionContext.PresentationRole.GROUP_OWNER : TelegramDecisionContext.PresentationRole.GROUP_MEMBER;
+                presentationUnitRebind = createCleargramGroupedMessageRebind(groupedMessages.messages);
+            }
+            NoiseEvaluation evaluation = noiseGateway.evaluatePipeline(evaluationMessage);
+            NoiseDecision decision = evaluation != null ? evaluation.getDecision() : new NoiseDecision(NoiseAction.ALLOW);
+            String decisionSource = sourceForCleargramDecision(evaluation, decision);
+            if ("BLACK_LIST".equals(decisionSource)) {
+                logBlackListMappedMetadata(groupedMessages, evaluationMessage);
+            }
+            NoiseAction ctaAction = TelegramMessageCtaPresentationPolicy.resolveAction(evaluation != null ? evaluation.getOutcome() : null, messageObject, groupedMessages, TelegramNoiseBootstrap.getMessageCtaButtonSettings());
+            if (ctaAction != null) {
+                decision = new NoiseDecision(ctaAction);
+                decisionSource = "CTA_BUTTON";
+            }
+            TelegramChannelFooterLinkPresentationPolicy.Result footer = TelegramChannelFooterLinkPresentationPolicy.resolve(
+                    evaluation != null ? evaluation.getOutcome() : null, ctaAction, messageObject, groupedMessages, currentChat,
+                    MessagesController.getInstance(currentAccount).linkPrefix);
+            if (footer.getKind() == TelegramChannelFooterLinkPresentationPolicy.Kind.FOREIGN_HIDE) {
+                decision = new NoiseDecision(NoiseAction.HIDE);
+                decisionSource = "UNKNOWN";
+            }
+            CharSequence captionOverride = footer.getKind() == TelegramChannelFooterLinkPresentationPolicy.Kind.SELF_TRIM
+                    ? TelegramCaptionFooterOverridePreparer.prepare(messageObject, footer.getFooterStartUtf16()) : null;
+            TelegramFooterOnlyTextBindIntegration.Request footerOnlyTextSuppressionRequest = TelegramFooterOnlyTextBindIntegration.prepare(
+                    evaluation != null ? evaluation.getOutcome() : null,
+                    ctaAction,
+                    messageObject,
+                    groupedMessages,
+                    currentChat,
+                    MessagesController.getInstance(currentAccount).linkPrefix
+            );
+            return new CleargramBindPlan(messageObject, decisionMessage, groupedMessages, presentationRole, presentationUnitRebind,
+                    evaluation, footer.getKind() == TelegramChannelFooterLinkPresentationPolicy.Kind.FOREIGN_HIDE, decision, decisionSource,
+                    captionOverride, footerOnlyTextSuppressionRequest);
+        } catch (RuntimeException ignored) {
+            return CleargramBindPlan.failOpen(messageObject, getValidGroupedMessage(messageObject));
+        }
+    }
+
+    private void applyCleargramBindPlan(CleargramBindPlan plan, ChatMessageCell messageCell) {
+        if (plan == null || messageCell == null) return;
+        boolean replacementPresentationBefore = messageCell != null
+                && messageCell.isCleargramReplacementPresentationActive();
+        try {
+            TelegramDecisionContext context = new TelegramDecisionContext(
+                    currentAccount,
+                    plan.decisionMessage,
+                    plan.messageObject,
+                    messageCell,
+                    plan.presentationRole,
+                    plan.presentationUnitRebind
+            );
+            noiseDecisionApplier.applyWithDiagnostics(plan.decision, context, noiseCollapseState,
+                    plan.groupedMessages != null, plan.decisionSource,
+                    "CTA_BUTTON".equals(plan.decisionSource));
+            TelegramFooterOnlyTextBindIntegration.apply(plan.footerOnlyTextSuppressionRequest, messageCell, context);
+            if (plan.evaluation != null && plan.evaluation.getOutcome() == NoisePipelineOutcome.CONTINUE_DUPLICATE_VIDEO
+                    && !plan.foreignFooterHide
+                    && duplicateVideoRuntime != null) {
+                duplicateVideoRuntime.onBound(plan.messageObject, plan.groupedMessages, context, true);
+            }
+        } catch (RuntimeException ignored) {
+            if (messageCell != null) {
+                messageCell.resetCleargramVisualEffect();
+            }
+        } finally {
+            boolean replacementPresentationAfter = messageCell != null
+                    && messageCell.isCleargramReplacementPresentationActive();
+            if (replacementPresentationBefore != replacementPresentationAfter) {
+                scheduleCleargramItemDecorationsInvalidation();
+            }
+        }
+    }
+
+    private static final class CleargramBindPlan {
+        final MessageObject messageObject, decisionMessage;
+        final MessageObject.GroupedMessages groupedMessages;
+        final TelegramDecisionContext.PresentationRole presentationRole;
+        final Runnable presentationUnitRebind;
+        final NoiseEvaluation evaluation;
+        final boolean foreignFooterHide;
+        final NoiseDecision decision;
+        final String decisionSource;
+        final CharSequence captionOverride;
+        final TelegramFooterOnlyTextBindIntegration.Request footerOnlyTextSuppressionRequest;
+        CleargramBindPlan(MessageObject messageObject, MessageObject decisionMessage, MessageObject.GroupedMessages groupedMessages, TelegramDecisionContext.PresentationRole presentationRole, Runnable presentationUnitRebind, NoiseEvaluation evaluation, boolean foreignFooterHide, NoiseDecision decision, String decisionSource, CharSequence captionOverride, TelegramFooterOnlyTextBindIntegration.Request footerOnlyTextSuppressionRequest) {
+            this.messageObject = messageObject; this.decisionMessage = decisionMessage; this.groupedMessages = groupedMessages; this.presentationRole = presentationRole; this.presentationUnitRebind = presentationUnitRebind; this.evaluation = evaluation; this.foreignFooterHide = foreignFooterHide; this.decision = decision; this.decisionSource = decisionSource; this.captionOverride = captionOverride; this.footerOnlyTextSuppressionRequest = footerOnlyTextSuppressionRequest;
+        }
+        static CleargramBindPlan failOpen(MessageObject messageObject, MessageObject.GroupedMessages groupedMessages) {
+            return new CleargramBindPlan(messageObject, messageObject, groupedMessages, TelegramDecisionContext.PresentationRole.SINGLE, null, null, false, new NoiseDecision(NoiseAction.ALLOW), "UNKNOWN", null, null);
+        }
+    }
+
+    private static String sourceForCleargramDecision(NoiseEvaluation evaluation, NoiseDecision decision) {
+        if (decision == null || (decision.getAction() != NoiseAction.HIDE && decision.getAction() != NoiseAction.COLLAPSE)) {
+            return "UNKNOWN";
+        }
+        return evaluation != null && evaluation.getOutcome() == NoisePipelineOutcome.TERMINAL_DECISION
+                ? "BLACK_LIST" : "CORE_OTHER";
+    }
+
+    private void logBlackListMappedMetadata(
+            MessageObject.GroupedMessages groupedMessages,
+            NoiseMessage evaluationMessage
+    ) {
+        if (!BuildVars.LOGS_ENABLED) {
+            return;
+        }
+        int mappedTextLength = evaluationMessage != null && evaluationMessage.getText() != null
+                ? evaluationMessage.getText().length() : 0;
+        boolean grouped = groupedMessages != null && groupedMessages.messages != null;
+        int presentationUnitCount = grouped ? groupedMessages.messages.size() : 1;
+        TelegramBlackListDiagnostics.logMappedMetadata(grouped, mappedTextLength,
+                presentationUnitCount);
+    }
+
+    private Runnable createCleargramSingleMessageRebind(MessageObject messageObject) {
+        return () -> {
+            scheduleCleargramItemDecorationsInvalidation();
+            if (chatAdapter != null) {
+                chatAdapter.updateRowWithMessageObject(messageObject, false, false);
+            }
+        };
+    }
+
+    private Runnable createCleargramGroupedMessageRebind(ArrayList<MessageObject> groupMessages) {
+        final ArrayList<MessageObject> memberSnapshot = new ArrayList<>(groupMessages);
+        return () -> {
+            scheduleCleargramItemDecorationsInvalidation();
+            if (chatAdapter == null) {
+                return;
+            }
+            HashSet<MessageObject> updatedMembers = new HashSet<>();
+            for (int i = 0; i < memberSnapshot.size(); i++) {
+                MessageObject member = memberSnapshot.get(i);
+                if (member != null && updatedMembers.add(member)) {
+                    chatAdapter.updateRowWithMessageObject(member, false, false);
+                }
+            }
+        };
+    }
+
+    private boolean cleargramItemDecorationsInvalidationScheduled;
+
+    private void scheduleCleargramItemDecorationsInvalidation() {
+        if (cleargramItemDecorationsInvalidationScheduled || chatListView == null) {
+            return;
+        }
+        cleargramItemDecorationsInvalidationScheduled = true;
+        chatListView.post(() -> {
+            cleargramItemDecorationsInvalidationScheduled = false;
+            if (chatListView == null) {
+                return;
+            }
+            if (chatListView.isComputingLayout()) {
+                scheduleCleargramItemDecorationsInvalidation();
+                return;
+            }
+            chatListView.invalidateItemDecorations();
+        });
+    }
+
     private boolean maybeStartTrackingSlidingView;
     private boolean startedTrackingSlidingView;
 
@@ -2642,6 +2844,11 @@ public class ChatActivity extends BaseFragment implements
 
     @Override
     public boolean onFragmentCreate() {
+        try {
+            duplicateVideoRuntime = TelegramNoiseBootstrap.createDuplicateVideoChatRuntime(currentAccount);
+        } catch (Throwable ignored) {
+            duplicateVideoRuntime = null;
+        }
         final long chatId = arguments.getLong("chat_id", 0);
         final long userId = arguments.getLong("user_id", 0);
         final int encId = arguments.getInt("enc_id", 0);
@@ -3331,6 +3538,11 @@ public class ChatActivity extends BaseFragment implements
     @Override
     public void onFragmentDestroy() {
         super.onFragmentDestroy();
+        if (duplicateVideoRuntime != null) {
+            duplicateVideoRuntime.close();
+            duplicateVideoRuntime = null;
+        }
+        noiseCollapseState.clear();
         if (messageMetricsView != null) {
             messageMetricsView.finish();
         }
@@ -6670,6 +6882,10 @@ public class ChatActivity extends BaseFragment implements
                 outRect.bottom = 0;
                 if (view instanceof ChatMessageCell) {
                     ChatMessageCell cell = (ChatMessageCell) view;
+                    if (cell.isCleargramReplacementPresentationActive()) {
+                        outRect.set(0, 0, 0, 0);
+                        return;
+                    }
                     MessageObject.GroupedMessages group = cell.getCurrentMessagesGroup();
                     if (group != null) {
                         MessageObject.GroupedMessagePosition position = cell.getCurrentPosition();
@@ -24756,12 +24972,35 @@ public class ChatActivity extends BaseFragment implements
             botSponsoredMessage = res == null || res.messages == null || res.messages.isEmpty() ? null : res.messages.get(0);
             updateTopPanel(true);
         } else {
+            if (shouldSuppressChannelEndAdvertisement(
+                    TelegramNoiseBootstrap.isHideChannelEndAdvertisementEnabled(),
+                    res.posts_between,
+                    res.messages.size())) {
+                return;
+            }
             sponsoredMessagesPostsBetween = res.posts_between != null ? res.posts_between : 0;
             if (notPushedSponsoredMessages != null) {
                 notPushedSponsoredMessages.clear();
             }
+            if (sponsoredMessagesPostsBetween > 0) {
+                for (int i = 0; i < res.messages.size(); i++) {
+                    if (res.messages.get(i).isSponsored()) {
+                        return;
+                    }
+                }
+            }
             processNewMessages(res.messages, false);
         }
+    }
+
+    static boolean shouldSuppressChannelEndAdvertisement(
+            boolean settingEnabled,
+            Integer postsBetween,
+            int sponsoredMessageCount
+    ) {
+        return settingEnabled
+                && sponsoredMessageCount > 0
+                && (postsBetween == null || postsBetween == 0);
     }
 
     public void removeFromSponsored(MessageObject message) {
@@ -28076,8 +28315,25 @@ public class ChatActivity extends BaseFragment implements
         return null;
     }
 
+    private boolean shouldSuppressChannelPinnedMessageHeader() {
+        if (currentChat == null || !ChatObject.isChannelAndNotMegaGroup(currentChat)) {
+            return false;
+        }
+        try {
+            return TelegramNoiseBootstrap.shouldHideChannelPinnedMessageHeader();
+        } catch (RuntimeException ignored) {
+            return false;
+        }
+    }
+
     private void updatePinnedMessageView(boolean animated, int animateToNext) {
         if (currentEncryptedChat != null || chatMode != 0) {
+            return;
+        }
+        if (shouldSuppressChannelPinnedMessageHeader()) {
+            if (hidePinnedMessageView(animated)) {
+                checkListViewPaddings();
+            }
             return;
         }
         int pinned_msg_id;
@@ -28815,7 +29071,7 @@ public class ChatActivity extends BaseFragment implements
         int chatWithAdminDate = preferences.getInt("dialog_bar_chat_with_date" + did, 0);
         boolean showAddMembersToGroup = preferences.getBoolean("dialog_bar_invite" + did, false);
         TLRPC.EmojiStatus showEmojiStatusReport = currentUser != null && (showReport || showBlock) ? DialogObject.filterEmojiStatus(currentUser.emoji_status) : null;
-        TL_bots.botVerification showBotVerificationReport = (show && (showReport || showBlock) || shownBotVerification || preferences.getBoolean("dialog_bar_botver" + did, true)) ? (userInfo != null && !UserObject.isUserSelf(currentUser) && userInfo.bot_verification != null ? userInfo.bot_verification : chatInfo != null && chatInfo.bot_verification != null ? chatInfo.bot_verification : null) : null;
+        TL_bots.botVerification showBotVerificationReport = null;
         long showCost = 0;
         if (ChatObject.isMonoForum(currentChat) && ChatObject.canManageMonoForum(currentAccount, currentChat)) {
             TLRPC.TL_forumTopic topic = getMessagesController().getTopicsController().findTopic(-dialog_id, getThreadId());
@@ -34500,7 +34756,10 @@ public class ChatActivity extends BaseFragment implements
                 if (messageObject != null && (!messageObject.deleted || cell.linkedChatId != linkedChatId) && !suppressUpdateMessageObject) {
                     cell.setIsUpdating(true);
                     cell.linkedChatId = chatInfo != null ? chatInfo.linked_chat_id : 0;
+                    CleargramBindPlan cleargramPlan = prepareCleargramBindPlan(messageObject);
+                    if (cleargramPlan.captionOverride != null) cell.setCleargramPendingCaptionOverride(messageObject, messageObject.caption, cleargramPlan.captionOverride);
                     cell.setMessageObject(messageObject, cell.getCurrentMessagesGroup(), cell.isPinnedBottom(), cell.isPinnedTop(), cell.isFirstInChat(), cell.isLastInChatList());
+                    applyCleargramBindPlan(cleargramPlan, cell);
                     cell.setIsUpdating(false);
                 }
                 if (cell != scrimView) {
@@ -37319,7 +37578,10 @@ public class ChatActivity extends BaseFragment implements
                         }
                     }
                     messageCell.setShowTopic(true);
+                    CleargramBindPlan cleargramPlan = prepareCleargramBindPlan(message);
+                    if (cleargramPlan.captionOverride != null) messageCell.setCleargramPendingCaptionOverride(message, message.caption, cleargramPlan.captionOverride);
                     messageCell.setMessageObject(message, groupedMessages, pinnedBottom, pinnedTop, firstInChat, lastInChatList);
+                    applyCleargramBindPlan(cleargramPlan, messageCell);
                     messageCell.setSpoilersSuppressed(chatListView.getScrollState() != RecyclerView.SCROLL_STATE_IDLE);
                     messageCell.setHighlighted(highlightMessageId != Integer.MAX_VALUE && message.getId() == highlightMessageId);
                     if (messageCell.isHighlighted() && highlightMessageQuote != null) {
@@ -37682,7 +37944,10 @@ public class ChatActivity extends BaseFragment implements
                     }
                 }
                 if (message.updateTranslation(false)) {
+                    CleargramBindPlan cleargramPlan = prepareCleargramBindPlan(message);
+                    if (cleargramPlan.captionOverride != null) messageCell.setCleargramPendingCaptionOverride(message, message.caption, cleargramPlan.captionOverride);
                     messageCell.setMessageObject(message, messageCell.getCurrentMessagesGroup(), messageCell.isPinnedBottom(), messageCell.isPinnedTop(), messageCell.isFirstInChat(), messageCell.isLastInChatList());
+                    applyCleargramBindPlan(cleargramPlan, messageCell);
                 } else {
                     MessageObject.GroupedMessages group = messageCell.getCurrentMessagesGroup();
                     if (group != null) {
@@ -37795,6 +38060,16 @@ public class ChatActivity extends BaseFragment implements
             }
         }
 
+        @Override
+        public void onViewRecycled(RecyclerView.ViewHolder holder) {
+            if (holder.itemView instanceof ChatMessageCell && duplicateVideoRuntime != null) {
+                ChatMessageCell messageCell = (ChatMessageCell) holder.itemView;
+                duplicateVideoRuntime.onRecycled(messageCell.getMessageObject(),
+                        messageCell.getCurrentMessagesGroup());
+            }
+            super.onViewRecycled(holder);
+        }
+
         public void updateRowAtPosition(int index) {
             if (chatLayoutManager == null || isFrozen || isFiltered) {
                 return;
@@ -37844,7 +38119,10 @@ public class ChatActivity extends BaseFragment implements
                     if (child instanceof ChatMessageCell) {
                         ChatMessageCell cell = (ChatMessageCell) child;
                         if (cell.getMessageObject() == messageObject && !cell.isAdminLayoutChanged()) {
+                            CleargramBindPlan cleargramPlan = prepareCleargramBindPlan(messageObject);
+                            if (cleargramPlan.captionOverride != null) cell.setCleargramPendingCaptionOverride(messageObject, messageObject.caption, cleargramPlan.captionOverride);
                             cell.setMessageObject(messageObject, cell.getCurrentMessagesGroup(), cell.isPinnedBottom(), cell.isPinnedTop(), cell.isFirstInChat(), cell.isLastInChatList());
+                            applyCleargramBindPlan(cleargramPlan, cell);
                             return cell;
                         }
                     }

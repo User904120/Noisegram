@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="AppName">Telegram</string>
+    <string name="CleargramMainChatsTitle">Cleargram</string>
     <string name="AppNameBeta">Telegram Beta</string>
     <string name="LanguageName">Русский</string>
     <string name="English">Английский</string>
@@ -210,6 +211,12 @@
     <string name="LoginOrSingInWithGoogle">или</string>
     <!--Intro view-->
     <string name="Page1Title">Telegram</string>
+    <string name="CleargramIntroTitle">Cleargram</string>
+    <string name="CleargramIntroSlogan">Сообщения без лишнего</string>
+    <string name="CleargramIntroDescriptionFirstLine">Настраивайте, какие сообщения показывать.</string>
+    <string name="CleargramIntroDescriptionSecondLine">Фильтрация работает локально на устройстве.</string>
+    <string name="CleargramIntroNotice">Cleargram — неофициальный клиент, использующий Telegram API.</string>
+    <string name="CleargramIntroContinue">Продолжить</string>
     <string name="Page2Title">Быстрый</string>
     <string name="Page3Title">Бесплатный</string>
     <string name="Page4Title">Безопасный</string>
@@ -263,4 +270,34 @@
     <string name="RemindTodayAt">\'Отправить сегодня в\' HH:mm</string>
     <string name="RemindDayAt">\'Отправить\' d MMM \'в\' HH:mm</string>
     <string name="RemindDayYearAt">\'Напомнить\' d MMM yyyy \'в\' HH:mm</string>
+    <string name="CleargramNoiseFilter">Фильтр сообщений</string>
+    <string name="CleargramEnableAll">Включить все</string>
+    <string name="CleargramMessageFiltering">Фильтрация сообщений</string>
+    <string name="CleargramFilteringRules">Правила фильтрации</string>
+    <string name="CleargramCtaMessages">CTA-сообщения</string>
+    <string name="CleargramRules">Правила</string>
+    <string name="CleargramAddRule">Добавить правило</string>
+    <string name="CleargramWhiteListRule">Правило белого списка</string>
+    <string name="CleargramNoRules">Нет правил</string>
+    <string name="CleargramDeleteRule">Удалить правило</string>
+    <string name="CleargramOperationFailed">Не удалось выполнить операцию. Попробуйте ещё раз.</string>
+    <string name="CleargramWhiteList">Белый список</string>
+    <string name="CleargramBlackList">Чёрный список</string>
+    <string name="CleargramBlackListAction">Действие чёрного списка</string>
+    <string name="CleargramHideReactions">Скрывать реакции</string>
+    <string name="CleargramHideDuplicateVideos">Скрывать повторы видео</string>
+    <string name="CleargramHideChannelEndAdvertisement">Скрывать рекламу в конце канала</string>
+    <string name="CleargramHideChannelEndAdvertisementSummary">Полностью скрывает рекламный блок, отображаемый после публикаций канала.</string>
+    <string name="CleargramHideFullscreenVideoAdvertisement">Скрывать рекламу под видео в полноэкранном режиме</string>
+    <string name="CleargramHideFullscreenVideoAdvertisementSummary">Скрывает рекламный блок, отображаемый под видео в полноэкранном просмотре.</string>
+    <string name="CleargramHideChannelPinnedMessageHeader">Скрывать панель закреплённого сообщения в каналах</string>
+    <string name="CleargramActionHide">Скрыть</string>
+    <string name="CleargramActionCollapse">Свернуть</string>
+    <string name="CleargramMessageCtaButton">Сообщения с кнопкой действия</string>
+    <string name="CleargramMessageCtaButtonAction">Действие</string>
+    <string name="CleargramMessageCtaButtonActionHide">Скрыть</string>
+    <string name="CleargramMessageCtaButtonActionCollapse">Свернуть</string>
+    <string name="CleargramEnterRule">Введите слово или фразу</string>
+    <string name="CleargramRuleInvalid">Правило некорректно или уже существует</string>
+    <string name="CleargramMessageCollapsed">Сообщение свернуто</string>
 </resources>
